@@ -12,32 +12,41 @@ import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.AdapterView;
+import android.widget.EditText;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.metroeger.costtrackerapp.adapter.CategoryItemAdapter;
 import com.metroeger.costtrackerapp.db.CategoryItemDAO;
 import com.metroeger.costtrackerapp.model.CategoryItem;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity implements AdapterView.OnItemClickListener {
 
     private static final int RQC_NEW_CATEGORY = 1;
     private static final int RQC_EDIT_CATEGORY = 2;
-    private static final int RQC_DELETE_CATEGORY = 3;
+    private static final int RQC_UPDATE_ITEM = 10;
+    private static double allCosts;
 
 
     private List<CategoryItem> categories;
     private CategoryItemAdapter cAdapter;
     private CategoryItemDAO dao;
+    private ListView lvCategories;
+    private Map<Integer, CategoryItem> ciMap;
+    private EditText etAmount;
 
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        this.setTitle("Categories");
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
@@ -49,17 +58,20 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 startActivityForResult(intent, RQC_NEW_CATEGORY);
             }
         });
-        
 
         dao = new CategoryItemDAO(this);
         categories = dao.getAllCategoryItems();
+        ciMap = dao.getCategoryMap();
 
         cAdapter = new CategoryItemAdapter(this, R.layout.category_item, categories);
-        ListView lv = findViewById(R.id.lvCategories);
-        lv.setAdapter(cAdapter);
+        lvCategories = findViewById(R.id.lvCategories);
+        lvCategories.setAdapter(cAdapter);
 
-        registerForContextMenu(lv);
+        etAmount = findViewById(R.id.etAllCosts);
+        calculateAndSetAllCosts();
 
+        registerForContextMenu(lvCategories);
+        lvCategories.setOnItemClickListener(this);
     }
 
     @Override
@@ -75,17 +87,17 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         AdapterView.AdapterContextMenuInfo positionInfo = (AdapterView.AdapterContextMenuInfo) item.getMenuInfo();
         int index = positionInfo.position;
 
+        CategoryItem ci = categories.get(index);
+
         if (id == R.id.miRemove) {
-            //Toast.makeText(this,"Delete category", Toast.LENGTH_LONG).show();
-            categories.remove(index);
+            categories.remove(ci);
+            dao.deleteCategoryItem(ci);
             cAdapter.notifyDataSetChanged();
             return true;
 
         } else if (id == R.id.miEdit) {
-            //Toast.makeText(this,"Edit category",Toast.LENGTH_LONG).show();
-            CategoryItem categoryItem = categories.get(index);
             Intent intent = new Intent(this, CategoryItemActivity.class);
-            intent.putExtra("selectedCatItem", categoryItem);
+            intent.putExtra("ci", ci);
             intent.putExtra("index", index);
             startActivityForResult(intent, RQC_EDIT_CATEGORY);
             return true;
@@ -108,6 +120,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             return true;
         } else if (id == R.id.miRemoveAll) {
             Toast.makeText(this, "Delete all categories", Toast.LENGTH_LONG).show();
+            dao.deleteAllCategories();
             cAdapter.clear();
             return true;
         }
@@ -118,13 +131,15 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
 
         if (resultCode == RESULT_OK) { // ie if save (button clicked)
-            CategoryItem categoryItem = (CategoryItem) data.getSerializableExtra("categoryItem");
+            CategoryItem ci = (CategoryItem) data.getSerializableExtra("ci");
             if (requestCode == RQC_NEW_CATEGORY) {
-                cAdapter.add(categoryItem); // adapter adds it also to categoriee
+                dao.saveCategoryItem(ci);
+                cAdapter.add(ci); // adapter adds it also to categoriee
             } else if (requestCode == RQC_EDIT_CATEGORY) {
                 int index = data.getIntExtra("index", -1);
                 if (index >= 0) {
-                    categories.set(index, categoryItem);
+                    dao.saveCategoryItem(ci);
+                    categories.set(index, ci);
                     cAdapter.notifyDataSetChanged();
                 } else {
                     Log.e("WLAPP", "ERROR: -1 index");
@@ -134,9 +149,27 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         super.onActivityResult(requestCode, resultCode, data);
     }
 
-
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+        Intent intent = new Intent(this, ItemsMainActivity.class);
+        CategoryItem ci = categories.get(position);
+        intent.putExtra("ci", ci);
+        Toast.makeText(this,ci.getName() + " ciItem = "+ci.getId(),Toast.LENGTH_LONG).show();
+        startActivity(intent);
+    }
 
+    public void calculateAndSetAllCosts() {
+        double cost = 0;
+        for (CategoryItem c : categories) {
+            cost += c.getAmount();
+        }
+        etAmount.setText(cost + "");
+    }
+
+    @Override
+    protected void onRestart() {
+        super.onRestart();
+        finish();
+        startActivity(getIntent());
     }
 }
